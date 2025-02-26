@@ -33,6 +33,19 @@ def md_and_template(filenames, stdout=True):
                 out_file.write(result)
 
 
+
+def without_template(filenames, stdout=True):
+    for filename in filenames:
+        with open(filename, 'r') as f:
+            body = markdown.markdown(f.read())
+        title = filename.rsplit('/', 1)[-1].rsplit('.', 1)[0]
+
+        if stdout:
+            print(body)
+        else:
+            with open(f"{title}.html", "w") as out_file:
+                out_file.write(body)
+
 if __name__ == "__main__":
-    md_and_template(sys.argv[1:])
+    without_template(sys.argv[1:], False)
 
