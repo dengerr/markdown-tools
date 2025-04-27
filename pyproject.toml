@@ -1,0 +1,13 @@
+[project]
+name = "markdown-tools"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bs4>=0.0.2",
+    "ebooklib>=0.18",
+    "lxml>=5.4.0",
+    "markdown>=3.8",
+    "requests>=2.32.3",
+]

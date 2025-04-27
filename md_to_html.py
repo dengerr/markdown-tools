@@ -1,7 +1,11 @@
 #!/bin/python
 
 import markdown
+from pathlib import Path
 import sys
+
+
+OUTPUT_DIR = 'output'
 
 
 def one_template(filenames):
@@ -43,7 +47,7 @@ def without_template(filenames, stdout=True):
         if stdout:
             print(body)
         else:
-            with open(f"{title}.html", "w") as out_file:
+            with open(Path(OUTPUT_DIR, f"{title}.html"), "w") as out_file:
                 out_file.write(body)
 
 if __name__ == "__main__":
