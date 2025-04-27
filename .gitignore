@@ -130,3 +130,6 @@ dmypy.json
 
 # my
 *.html
+*.epub
+md
+urls.txt
