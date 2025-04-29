@@ -9,11 +9,12 @@ from ebooklib import epub
 from bs4 import BeautifulSoup
 
 
-def md_to_epub(filenames):
+def md_to_epub(filenames, name):
+    author = "habr"
 
     book = epub.EpubBook()
-    book.set_title("Название книги")
-    book.add_author("Автор")
+    book.set_title(name)
+    book.add_author(author)
     book.set_language("ru")
     chapters = ['nav']
     toc = []
@@ -28,13 +29,15 @@ def md_to_epub(filenames):
         img_tags = soup.find_all('img')
         for j, img in enumerate(img_tags):
             url = img['src']
-            img_name = url.rsplit('/', 1)[-1]
+            img_name = str(url).rsplit('/', 1)[-1]
             response = requests.get(url)
             media_type = response.headers['Content-Type']
             img_file_path = f'static/{img_name}'
             img['src'] = img_file_path
             eimg = epub.EpubImage(uid=f'image_{i}_{j}', file_name=img_file_path, media_type=media_type, content=response.content)
             book.add_item(eimg)
+            print('.', end='')
+        print()
 
         chapter = epub.EpubHtml(title=title, file_name=f"chap{i}.xhtml", lang="ru")
         chapter.content = str(soup)
@@ -47,9 +50,22 @@ def md_to_epub(filenames):
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
 
-    epub.write_epub("output.epub", book)
+    epub.write_epub(f"{author} - {name}.epub", book)
 
 
 if __name__ == "__main__":
-    md_to_epub(sys.argv[1:])
+    filenames = sys.argv[1:]
+    base_name = "2025-04-25"
+    max_files = 5
+    if len(filenames) > max_files:
+        for chunk in range(100):
+            name = f"{base_name} {chunk}"
+            chunk_files = filenames[chunk*max_files:chunk*max_files+max_files]
+            if not chunk_files:
+                break
+            # print(chunk_files)
+            md_to_epub(chunk_files, name)
+
+    else:
+        md_to_epub(filenames, base_name)
 
