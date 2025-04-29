@@ -16,24 +16,22 @@ CACHE_FILE = './cache.shelve'
 
 def save_imgs(filenames):
     with shelve.open(CACHE_FILE) as cache_db:
-        for i, filename in enumerate(filenames):
+        for filename in filenames:
             with open(filename, 'r') as f:
                 body = markdown.markdown(f.read())
             soup = BeautifulSoup(body, "html.parser")
             img_tags = soup.find_all('img')
-            for j, img in enumerate(img_tags):
+            for img in img_tags:
                 url = img['src']
                 if url in cache_db:
                     continue
-                img_name = str(url).rsplit('/', 1)[-1]
                 response = requests.get(url)
-                media_type = response.headers['Content-Type']
                 hash = str(hashlib.sha1(response.content))
                 with open(Path(CACHE_DIR) / hash, 'wb') as fp:
                     fp.write(response.content)
                 cache_db[url] = dict(
-                    img_name=img_name,
-                    media_type=media_type,
+                    img_name=str(url).rsplit('/', 1)[-1],
+                    media_type=response.headers['Content-Type'],
                     hash=hash,
                 )
                 print('.', end='')
@@ -88,16 +86,5 @@ if __name__ == "__main__":
     filenames = sys.argv[1:]
     save_imgs(filenames)
     base_name = "2025-04-25"
-    max_files = 5
-    if len(filenames) > max_files:
-        for chunk in range(100):
-            name = f"{base_name} {chunk}"
-            chunk_files = filenames[chunk*max_files:chunk*max_files+max_files]
-            if not chunk_files:
-                break
-            # print(chunk_files)
-            md_to_epub(chunk_files, name)
-
-    else:
-        md_to_epub(filenames, base_name)
+    md_to_epub(filenames, base_name)
 
