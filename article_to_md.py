@@ -56,7 +56,7 @@ class AbstractConfig:
         content_parts = [
             f"# {title}" if title else '',
             date,
-            self.url,
+            f'<{self.url}>',
             content,
         ]
 

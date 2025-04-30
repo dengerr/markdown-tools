@@ -3,4 +3,10 @@ start.html:
 	scp start.html root@killdozer:/var/www/html/buryi.de/start.html
 
 clean:
-	rm start.html
+	rm *.html
+	rm md/*
+	echo "" > urls.txt
+
+epub:
+	uv run bulk_get_articles_to_md.py
+	uv run md_to_epub.py md/*.md
