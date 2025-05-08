@@ -3,7 +3,6 @@ start.html:
 	scp start.html root@killdozer:/var/www/html/buryi.de/start.html
 
 clean:
-	rm *.html
 	rm md/*
 	echo "" > urls.txt
 

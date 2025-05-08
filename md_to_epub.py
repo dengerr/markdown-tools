@@ -39,7 +39,7 @@ def save_imgs(filenames):
 
 
 def md_to_epub(filenames, name):
-    author = "habr"
+    author = "Oleg Makarenko"
 
     book = epub.EpubBook()
     book.set_title(name)
@@ -89,6 +89,6 @@ def md_to_epub(filenames, name):
 if __name__ == "__main__":
     filenames = sys.argv[1:]
     save_imgs(filenames)
-    base_name = "2025-04-25"
+    base_name = "2025-05-07"
     md_to_epub(filenames, base_name)
 
