@@ -26,7 +26,7 @@ def save_imgs(filenames):
                 if url in cache_db:
                     continue
                 response = requests.get(url)
-                hash = str(hashlib.sha1(response.content))
+                hash = hashlib.sha1(response.content).hexdigest()
                 with open(Path(CACHE_DIR) / hash, 'wb') as fp:
                     fp.write(response.content)
                 cache_db[url] = dict(
