@@ -21,6 +21,7 @@ class Article:
     error_code: str
     title: str
     md_content: str
+    html_content: str
     filename: str
 
 
@@ -32,6 +33,7 @@ class AbstractConfig:
     def __init__(self, url):
         self.url = url
         self.raw_html = self.get_html(url)
+        self.soup = BeautifulSoup(self.raw_html, 'lxml')
 
     def get_html(self, url):
         return get_raw_html(url)
@@ -45,23 +47,35 @@ class AbstractConfig:
     def get_date(self) -> str:
         return get_md(self.raw_html, self.date_tag)
 
-    def get_content(self) -> str:
+    def get_md_content(self) -> str:
         return get_md(self.raw_html, self.content_tag)
+
+    def get_html_content(self) -> str:
+        return self.soup.select_one(self.content_tag).prettify()
 
     def get_obj(self) -> str:
         title = self.get_title()
-        content = self.get_content()
         date = self.get_date()
 
         content_parts = [
             f"# {title}" if title else '',
             date,
             f'[{self.url}]({self.url})',
-            content,
+            self.get_md_content(),
         ]
 
         md_content = '\n\n'.join(
             part_str for part in content_parts if (part_str := part.strip()))
+
+        html_content_parts = [
+            f"<h1>{title}</h1>" if title else '',
+            f"<p>{date}</p>",
+            f"<p><a href='{self.url}'>{self.url}</a></p>",
+            f"<div>{self.get_html_content()}</div>",
+        ]
+
+        html_content = '\n\n'.join(
+            part_str for part in html_content_parts if (part_str := part.strip()))
 
         return Article(
             raw_html=self.raw_html,
@@ -69,6 +83,7 @@ class AbstractConfig:
             error_code='',
             title=title,
             md_content=md_content,
+            html_content=html_content,
             filename=self.get_filename(),
         )
 

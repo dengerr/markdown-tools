@@ -38,7 +38,7 @@ def save_imgs(filenames):
     print('all imgs saved')
 
 
-def md_to_epub(filenames, author, name):
+def html_md_to_epub(filenames, author, name):
     book = epub.EpubBook()
     book.set_title(name)
     book.add_author(author)
@@ -49,7 +49,10 @@ def md_to_epub(filenames, author, name):
 
     for i, filename in enumerate(filenames):
         with open(filename, 'r') as f:
-            body = markdown.markdown(f.read())
+            if filename.endswith('.md'):
+                body = markdown.markdown(f.read())
+            else:
+                body = f.read()
         title = filename.rsplit('/', 1)[-1].rsplit('.', 1)[0]
         print(title)
 
@@ -88,5 +91,4 @@ if __name__ == "__main__":
     filenames = sys.argv[1:]
     save_imgs(filenames)
     # hardcode
-    md_to_epub(filenames, "Oleg Makarenko", "2025-05-07")
-
+    html_md_to_epub(filenames, "Oleg Makarenko", "2025-05-07")
