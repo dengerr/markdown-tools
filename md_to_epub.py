@@ -14,6 +14,7 @@ from article_to_md import Article
 
 CACHE_DIR = './cache'
 CACHE_FILE = './cache.shelve'
+OUTPUT_DIR = './output'
 
 
 def save_imgs(filenames):
@@ -95,7 +96,7 @@ def html_md_to_epub(filenames, author, name):
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
 
-    epub.write_epub(f"{author} - {name}.epub", book)
+    epub.write_epub(f"{OUTPUT_DIR}/{author} - {name}.epub", book)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import requests
+import shelve
 from subprocess import run, PIPE
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from parsing_rss import parse_rss
 
 OUTPUT_DIR = 'md'
 HTML_DIR = 'html'
+GUIDS_FILE = 'guids.shelve'
 INTERVAL = 4
 
 
@@ -19,8 +21,13 @@ def rss_to_epub(rss_url, stem):
     content = requests.get(rss_url)
     channel, items = parse_rss(content.content)
     items.sort(key=lambda x: x['pubDate'])
-    md_filenames = []
-    html_filenames = []
+    with shelve.open(GUIDS_FILE) as guids_db:
+        items = [item for item in items if item['guid'] not in guids_db]
+        guids_db.update({item['guid']: True for item in items})
+    if not items:
+        return
+
+    articles = []
     for item in items:
         html_content = '\n'.join([
             f'<h1>{item["title"]}</h1>',
@@ -36,20 +43,14 @@ def rss_to_epub(rss_url, stem):
             html_content=html_content,
             filename=item['title'],
         )
+        articles.append(article)
 
-        md_path = f'{OUTPUT_DIR}/{article.filename}.md'
-        open(md_path, 'w').write(article.md_content)
-        md_filenames.append(md_path)
-        html_path = f'{HTML_DIR}/{article.filename}.html'
-        open(html_path, 'w').write(article.html_content)
-        html_filenames.append(html_path)
-
-    save_imgs(md_filenames)
+    save_imgs(articles)
     if ' - ' in stem:
         author, name = stem.split(' - ')
     else:
         author, name = 'unknown', stem
-    html_md_to_epub(html_filenames, author, name)
+    html_md_to_epub(articles, author, name)
 
 
 def get_md(html):

@@ -135,5 +135,6 @@ dmypy.json
 *.db
 *.xml
 cache
+output
 md
 urls.txt

@@ -9,3 +9,6 @@ clean:
 epub:
 	uv run bulk_get_articles_to_md.py
 	uv run md_to_epub.py md/*.md
+
+rss:
+	uv run rss_to_epub.py "Oleg - `date +%Y-%m-%d`=https://olegmakarenko.ru/data/rss"
