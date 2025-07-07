@@ -1,13 +1,10 @@
 #!/usr/bin/python3
-import re
 import sys
-import time
 import requests
 import shelve
 from subprocess import run, PIPE
-from pathlib import Path
 
-from article_to_md import get_article, Article
+from article_to_md import Article
 from md_to_epub import save_imgs, html_md_to_epub
 from parsing_rss import parse_rss
 

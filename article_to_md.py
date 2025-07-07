@@ -171,7 +171,7 @@ def get_article(url):
         part_str for part in content_parts if (part_str := part.strip()))
 
     return Article(
-        raw_html=raw_html,
+        raw_html=content,
         success=True,
         error_code='',
         title=title,
