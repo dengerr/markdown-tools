@@ -9,30 +9,24 @@ from md_to_epub import save_imgs, html_md_to_epub
 
 OUTPUT_DIR = 'md'
 HTML_DIR = 'html'
-INTERVAL = 4
+INTERVAL = 2
 
 
 def urls_to_epub(urls, stem):
-    html_filenames = []
-    md_filenames = []
+    articles = []
     for url in urls:
         print(url, end=' ... ')
         article = get_article(url)
-        md_path = f'{OUTPUT_DIR}/{article.filename}.md'
-        open(md_path, 'w').write(article.md_content)
-        md_filenames.append(md_path)
-        html_path = f'{HTML_DIR}/{article.filename}.html'
-        open(html_path, 'w').write(article.html_content)
-        html_filenames.append(html_path)
+        articles.append(article)
         print('success')
         time.sleep(INTERVAL)
 
-    save_imgs(md_filenames)
+    save_imgs(articles)
     if ' - ' in stem:
         author, name = stem.split(' - ')
     else:
         author, name = 'unknown', stem
-    html_md_to_epub(html_filenames, author, name)
+    html_md_to_epub(articles, author, name)
 
 
 if __name__ == '__main__':

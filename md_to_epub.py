@@ -10,6 +10,8 @@ import requests
 from ebooklib import epub
 from bs4 import BeautifulSoup
 
+from article_to_md import Article
+
 CACHE_DIR = './cache'
 CACHE_FILE = './cache.shelve'
 
@@ -17,8 +19,12 @@ CACHE_FILE = './cache.shelve'
 def save_imgs(filenames):
     with shelve.open(CACHE_FILE) as cache_db:
         for filename in filenames:
-            with open(filename, 'r') as f:
-                body = markdown.markdown(f.read())
+            if isinstance(filename, Article):
+                article = filename
+                body = article.html_content
+            else:
+                with open(filename, 'r') as f:
+                    body = markdown.markdown(f.read())
             soup = BeautifulSoup(body, "html.parser")
             img_tags = soup.find_all('img')
             for img in img_tags:
@@ -48,12 +54,17 @@ def html_md_to_epub(filenames, author, name):
     img_in_epub = set()
 
     for i, filename in enumerate(filenames):
-        with open(filename, 'r') as f:
-            if filename.endswith('.md'):
-                body = markdown.markdown(f.read())
-            else:
-                body = f.read()
-        title = filename.rsplit('/', 1)[-1].rsplit('.', 1)[0]
+        if isinstance(filename, Article):
+            article = filename
+            body = article.html_content
+            title = article.title
+        else:
+            with open(filename, 'r') as f:
+                if filename.endswith('.md'):
+                    body = markdown.markdown(f.read())
+                else:
+                    body = f.read()
+            title = filename.rsplit('/', 1)[-1].rsplit('.', 1)[0]
         print(title)
 
         soup = BeautifulSoup(body, "html.parser")
