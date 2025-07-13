@@ -29,10 +29,8 @@ def save_imgs(filenames):
             soup = BeautifulSoup(body, "html.parser")
             img_tags = soup.find_all('img')
             for img in img_tags:
-                if not 'src' in img:
-                    continue
-                url = img['src']
-                if url in cache_db:
+                url = img.get('src')
+                if not url or url in cache_db:
                     continue
                 response = requests.get(url)
                 hash = hashlib.sha1(response.content).hexdigest()
@@ -74,9 +72,9 @@ def html_md_to_epub(filenames, author, name):
         img_tags = soup.find_all('img')
         with shelve.open(CACHE_FILE) as cache_db:
             for j, img in enumerate(img_tags):
-                if not 'src' in img:
+                url = img.get('src')
+                if not url:
                     continue
-                url = img['src']
                 if cached_img := cache_db.get(url):
                     img_name = cached_img['img_name']
                     img['src'] = f'static/{img_name}'
