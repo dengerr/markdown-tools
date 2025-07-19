@@ -55,6 +55,7 @@ def rss_to_epub(rss_url, stem):
 
         html_content = '\n'.join([
             f'<h1>{item["title"]}</h1>',
+            f'<p>{item["pubDate"].date()}</p>',
             f'<p><a href="{item["link"]}">{item["link"]}</p>',
             item['description'],
         ])
