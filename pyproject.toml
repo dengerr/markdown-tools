@@ -12,4 +12,5 @@ dependencies = [
     "markdown>=3.8",
     "python-dateutil>=2.9.0.post0",
     "requests>=2.32.3",
+    "sqlean-py>=3.49.1",
 ]

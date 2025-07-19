@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 import sys
 import requests
-import shelve
 from subprocess import run, PIPE
+
+import sqlean as sqlite3
 
 from article_to_md import Article
 from md_to_epub import save_imgs, html_md_to_epub
@@ -12,20 +13,46 @@ OUTPUT_DIR = 'md'
 HTML_DIR = 'html'
 GUIDS_FILE = 'guids.shelve'
 INTERVAL = 4
+DEBUG = 0
+
+
+def init_sqlite():
+    conn = sqlite3.connect("rss.sqlite")
+    conn.row_factory = sqlite3.Row
+    conn.execute("create table if not exists articles (channel, guid, dt, title, raw_html)")
+    return conn
 
 
 def rss_to_epub(rss_url, stem):
-    content = requests.get(rss_url)
-    channel, items = parse_rss(content.content)
+    if DEBUG:
+        with open('oleg.rss.xml') as fp:
+            content = fp.read()
+    else:
+        content = requests.get(rss_url).content
+    channel, items = parse_rss(content)
     items.sort(key=lambda x: x['pubDate'])
-    with shelve.open(GUIDS_FILE) as guids_db:
-        items = [item for item in items if item['guid'] not in guids_db]
-        guids_db.update({item['guid']: True for item in items})
     if not items:
         return
 
     articles = []
+    conn = init_sqlite()
+    cursor = conn.cursor()
+
     for item in items:
+        cursor.execute('select 1 from articles WHERE guid = ?;', (item['guid'],))
+        exists = cursor.fetchone()
+        if exists:
+            continue
+
+        insert_query = (
+            "insert into articles "
+            "(channel, guid, dt, title, raw_html) "
+            "values (?, ?, ?, ?, ?)"
+        )
+        cur = conn.execute(insert_query, (
+            rss_url, item['guid'], item['pubDate'], item['title'], item['description'],
+        ))
+
         html_content = '\n'.join([
             f'<h1>{item["title"]}</h1>',
             f'<p><a href="{item["link"]}">{item["link"]}</p>',
@@ -41,6 +68,12 @@ def rss_to_epub(rss_url, stem):
             filename=item['title'],
         )
         articles.append(article)
+
+    conn.commit()
+    conn.close()
+
+    if not articles:
+        return
 
     save_imgs(articles)
     if ' - ' in stem:

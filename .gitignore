@@ -134,6 +134,7 @@ dmypy.json
 *.md
 *.db
 *.xml
+*.sqlite
 cache
 output
 md
