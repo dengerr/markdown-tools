@@ -51,6 +51,7 @@ def html_md_to_epub(filenames, author, name):
     book.add_author(author)
     book.set_language("ru")
     chapters = ['nav']
+    chapters = []
     toc = []
     img_in_epub = set()
 

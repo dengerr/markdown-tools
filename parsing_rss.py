@@ -29,6 +29,8 @@ def parse_rss(content):
                 di[attr] = node.string
             else:
                 di[attr] = None
+        if content := getattr(item, 'content:encoded'):
+            di['description'] = content.string
         di['description'] = html.unescape(di['description'])
         di['pubDate'] = dateutil.parser.parse(di['pubDate'])
         items.append(di)

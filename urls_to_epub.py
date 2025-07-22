@@ -45,4 +45,7 @@ if __name__ == '__main__':
                 for url in open(p, 'r').readlines():
                     urls.append(url)
                 urls_to_epub(urls, p.stem)
+            case _:
+                urls.append(filename)
+                urls_to_epub(urls, 'one_url')
 
