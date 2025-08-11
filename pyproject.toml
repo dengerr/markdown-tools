@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "bs4>=0.0.2",
     "ebooklib>=0.18",
+    "html2md>=0.1.7",
     "ipython>=9.4.0",
     "lxml>=5.4.0",
     "markdown>=3.8",

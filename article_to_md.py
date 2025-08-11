@@ -12,6 +12,7 @@ import requests
 from subprocess import run, PIPE
 
 from bs4 import BeautifulSoup
+import html2md
 
 
 @dataclass
@@ -39,16 +40,19 @@ class AbstractConfig:
         return get_raw_html(url)
 
     def get_title(self) -> str:
-        return get_md(self.raw_html, self.title_tag)
+        html = self.soup.select_one(self.title_tag)
+        return get_md(html)
 
     def get_filename(self) -> str:
         return self.get_title()
 
     def get_date(self) -> str:
-        return get_md(self.raw_html, self.date_tag)
+        html = self.soup.select_one(self.date_tag)
+        return get_md(html)
 
     def get_md_content(self) -> str:
-        return get_md(self.raw_html, self.content_tag)
+        html = self.soup.select_one(self.self.content_tag)
+        return get_md(html)
 
     def get_html_content(self) -> str:
         return self.soup.select_one(self.content_tag).prettify()
@@ -121,7 +125,7 @@ class Vas3kConfig(AbstractConfig):
 
 
 class HabrConfig(AbstractConfig):
-    title_tag = 'h1'
+    title_tag = 'h1 > span'
     content_tag = '.tm-article-body'
     date_tag = '.tm-article-datetime-published'
 
@@ -139,8 +143,10 @@ def get_raw_html(url) -> str:
     return response.content.decode('utf8')
 
 
-def get_md(html, tag):
-    p = run(['html2md', '--in', '-s', tag], stdout=PIPE,
+def get_md(html):
+    md = html2md.convert(str(html))
+    return md.strip()
+    p = run(['html2md'], stdout=PIPE,
             input=html, encoding='utf8')
     return p.stdout.strip()
 
@@ -154,7 +160,7 @@ def get_config(url) -> AbstractConfig:
 
 def get_article(url):
     config = get_config(url)
-    return config.get_obj()
+    return config.get_obj(add_md=False)
 
     title = config.get_title()
     content = config.get_content()
