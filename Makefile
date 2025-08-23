@@ -13,3 +13,4 @@ epub:
 rss:
 	uv run rss_to_epub.py "Oleg - `date +%Y-%m-%d`=https://olegmakarenko.ru/data/rss"
 	uv run rss_to_epub.py "ammo1 - `date +%Y-%m-%d`=http://ammo1.ru/feed"
+	uv run rss_to_epub.py "ksoftware - `date +%Y-%m-%d`=https://ksoftware.livejournal.com/data/rss"
