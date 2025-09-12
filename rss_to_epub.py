@@ -5,6 +5,7 @@ from subprocess import run, PIPE
 
 import sqlean as sqlite3
 
+import html2md
 from article_to_md import Article
 from md_to_epub import save_imgs, html_md_to_epub
 from parsing_rss import parse_rss
