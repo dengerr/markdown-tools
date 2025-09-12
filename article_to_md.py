@@ -51,7 +51,7 @@ class AbstractConfig:
         return get_md(html)
 
     def get_md_content(self) -> str:
-        html = self.soup.select_one(self.self.content_tag)
+        html = self.soup.select_one(self.content_tag)
         return get_md(html)
 
     def get_html_content(self) -> str:
@@ -160,7 +160,7 @@ def get_config(url) -> AbstractConfig:
 
 def get_article(url):
     config = get_config(url)
-    return config.get_obj(add_md=False)
+    return config.get_obj()
 
     title = config.get_title()
     content = config.get_content()

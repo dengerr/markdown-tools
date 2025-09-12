@@ -85,6 +85,8 @@ def rss_to_epub(rss_url, stem):
 
 
 def get_md(html):
+    md = html2md.convert(str(html))
+    return md.strip()
     p = run(['html2md', '--in'], stdout=PIPE,
             input=html, encoding='utf8')
     return p.stdout.strip()
