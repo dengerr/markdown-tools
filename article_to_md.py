@@ -31,10 +31,16 @@ class AbstractConfig:
     content_tag = 'article'
     date_tag = '.dt-published'
 
-    def __init__(self, url):
+    def __init__(self, url, html=None):
         self.url = url
-        self.raw_html = self.get_html(url)
-        self.soup = BeautifulSoup(self.raw_html, 'lxml')
+        self.raw_html = html
+        self.soup = BeautifulSoup(self.html, 'lxml')
+
+    @property
+    def html(self):
+        if self.raw_html is None:
+            self.raw_html = get_raw_html(self.url)
+        return self.raw_html
 
     def get_html(self, url):
         return get_raw_html(url)
@@ -82,7 +88,7 @@ class AbstractConfig:
             part_str for part in html_content_parts if (part_str := part.strip()))
 
         return Article(
-            raw_html=self.raw_html,
+            raw_html=self.html,
             success=True,
             error_code='',
             title=title,
@@ -96,7 +102,7 @@ class OlegConfig(AbstractConfig):
     content_tag = '.b-singlepost-bodywrapper'
 
     def get_date(self) -> str:
-        return BeautifulSoup(self.raw_html, 'lxml').time.text
+        return BeautifulSoup(self.html, 'lxml').time.text
 
 
 class TelegramConfig(AbstractConfig):
@@ -109,7 +115,7 @@ class TelegramConfig(AbstractConfig):
 
     def get_title(self) -> str:
         return ''
-        content = get_md(self.raw_html, self.content_tag)
+        content = get_md(self.html, self.content_tag)
         return content[:50]
 
     def get_filename(self) -> str:
@@ -151,15 +157,15 @@ def get_md(html):
     return p.stdout.strip()
 
 
-def get_config(url) -> AbstractConfig:
+def get_config(url, html=None) -> AbstractConfig:
     for k, v in configs.items():
         if k in url:
-            return v(url)
+            return v(url, html)
     raise RuntimeError('config not found')
 
 
-def get_article(url):
-    config = get_config(url)
+def get_article(url, html=None):
+    config = get_config(url, html)
     return config.get_obj()
 
     title = config.get_title()

@@ -1,25 +1,47 @@
 #!/usr/bin/python3
+import aiohttp
+import asyncio
 import re
 import sys
 import time
 from pathlib import Path
 
-from article_to_md import get_article
+from article_to_md import get_article, get_raw_html
 from md_to_epub import save_imgs, html_md_to_epub
 
 OUTPUT_DIR = 'md'
 HTML_DIR = 'html'
 INTERVAL = 2
+SYNC = False
+
+
+async def async_get_raw_html(session, url) -> str:
+    async with session.get(url) as resp:
+        return await resp.read()
+
+
+async def async_get_htmls(urls):
+    async with aiohttp.ClientSession() as session:
+        htmls = await asyncio.gather(*(async_get_raw_html(session, url) for url in urls))
+    return htmls
 
 
 def urls_to_epub(urls, stem):
     articles = []
-    for url in urls:
-        print(url, end=' ... ')
-        article = get_article(url)
+    htmls = []
+    if SYNC:
+        for url in urls:
+            print(url, end=' ... ')
+            html = get_raw_html(url)
+            htmls.append(html)
+            print('success')
+            time.sleep(INTERVAL)
+    else:
+        htmls = asyncio.run(async_get_htmls(urls))
+
+    for url, html in zip(urls, htmls):
+        article = get_article(url, html)
         articles.append(article)
-        print('success')
-        time.sleep(INTERVAL)
 
     save_imgs(articles)
     if ' - ' in stem:
