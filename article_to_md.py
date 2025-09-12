@@ -135,6 +135,13 @@ class HabrConfig(AbstractConfig):
     content_tag = '.tm-article-body'
     date_tag = '.tm-article-datetime-published'
 
+    def get_html_content(self) -> str:
+        html = self.soup.select_one(self.content_tag)
+        for li in html.find_all('li'):
+            if len(li.contents) == 1 and li.contents[0].name == 'p':
+                li.contents[0].name = 'span'
+        return html.prettify()
+
 
 configs = {
     'olegmakarenko.ru': OlegConfig,
