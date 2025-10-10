@@ -61,7 +61,10 @@ class AbstractConfig:
         return get_md(html)
 
     def get_html_content(self) -> str:
-        return self.soup.select_one(self.content_tag).prettify()
+        html = self.soup.select_one(self.content_tag).prettify()
+        if not html:
+            print('not content for tag', self.content_tag)
+        return html
 
     def get_obj(self) -> str:
         title = self.get_title()
@@ -132,11 +135,13 @@ class Vas3kConfig(AbstractConfig):
 
 class HabrConfig(AbstractConfig):
     title_tag = 'h1 > span'
-    content_tag = '.tm-article-body'
+    content_tag = '.article-body'
     date_tag = '.tm-article-datetime-published'
 
     def get_html_content(self) -> str:
         html = self.soup.select_one(self.content_tag)
+        if not html:
+            print('not content for tag', self.content_tag)
         for li in html.find_all('li'):
             if len(li.contents) == 1 and li.contents[0].name == 'p':
                 li.contents[0].name = 'span'
