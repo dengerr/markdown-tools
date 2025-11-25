@@ -66,7 +66,7 @@ class AbstractConfig:
             print('not content for tag', self.content_tag)
         return html
 
-    def get_obj(self) -> str:
+    def get_obj(self) -> Article:
         title = self.get_title()
         date = self.get_date()
 

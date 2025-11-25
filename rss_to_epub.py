@@ -85,6 +85,10 @@ def rss_to_epub(rss_url, stem):
         author, name = 'unknown', stem
     html_md_to_epub(articles, author, name)
 
+    # save to md file
+    for article in articles:
+        open(f'md/{author} - {article.filename}.md', 'w').write(article.md_content)
+
 
 def get_md(html):
     md = html2md.convert(str(html))
