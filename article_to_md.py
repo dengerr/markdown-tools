@@ -3,16 +3,16 @@
 # использование article_to_md.py https://url/
 # Надо немного поднастроить под каждый сайт:
 # jQuery селекторы для title, content, date.
-# Нужно скачать софтину
+# Нужно скачать софтину (уже не надо)
 # https://github.com/suntong/html2md
 
-from dataclasses import dataclass
 import sys
-import requests
+from dataclasses import dataclass
 from subprocess import run, PIPE
 
+import pyhtml2md
+import requests
 from bs4 import BeautifulSoup
-import html2md
 
 
 @dataclass
@@ -162,7 +162,7 @@ def get_raw_html(url) -> str:
 
 
 def get_md(html):
-    md = html2md.convert(str(html))
+    md = pyhtml2md.convert(str(html))
     return md.strip()
     p = run(['html2md'], stdout=PIPE,
             input=html, encoding='utf8')

@@ -1,12 +1,12 @@
 #!/usr/bin/python3
 import datetime
 import sys
-import requests
 from subprocess import run, PIPE
 
+import pyhtml2md
+import requests
 import sqlean as sqlite3
 
-import html2md
 from article_to_md import Article
 from md_to_epub import save_imgs, html_md_to_epub
 from parsing_rss import parse_rss
@@ -91,7 +91,7 @@ def rss_to_epub(rss_url, stem):
 
 
 def get_md(html):
-    md = html2md.convert(str(html))
+    md = pyhtml2md.convert(str(html))
     return md.strip()
     p = run(['html2md', '--in'], stdout=PIPE,
             input=html, encoding='utf8')
