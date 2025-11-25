@@ -7,7 +7,7 @@ import pyhtml2md
 import requests
 import sqlean as sqlite3
 
-from article_to_md import Article
+from article_to_md import Article, build_full_md_content, build_full_html_content
 from md_to_epub import save_imgs, html_md_to_epub
 from parsing_rss import parse_rss
 
@@ -55,19 +55,18 @@ def rss_to_epub(rss_url, stem):
             rss_url, item['guid'], item['pubDate'], item['title'], item['description'],
         ))
 
-        html_content = '\n'.join([
-            f'<h1>{item["title"]}</h1>',
-            f'<p>{item["pubDate"].date()}</p>',
-            f'<p><a href="{item["link"]}">{item["link"]}</p>',
-            item['description'],
-        ])
+        title = item['title']
+        date = item["pubDate"].date()
+        url = item["link"]
+        full_html_content = build_full_html_content(title, date, url, item['description'])
+        full_md_content = build_full_md_content(title, date, url, get_md(item['description']))
         article = Article(
             raw_html=item['description'],
             success=True,
             error_code='',
             title=item['title'],
-            md_content=get_md(item['description']),
-            html_content=html_content,
+            md_content=full_md_content,
+            html_content=full_html_content,
             filename=item['title'],
         )
         articles.append(article)

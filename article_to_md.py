@@ -15,6 +15,31 @@ import requests
 from bs4 import BeautifulSoup
 
 
+def build_full_md_content(title, date, url, md_content):
+    content_parts = [
+        f"# {title}" if title else '',
+        date,
+        f'[{url}]({url})',
+        md_content,
+    ]
+
+    return '\n\n'.join(
+        part_str for part in content_parts
+        if (part_str := part.strip())) + '\n'
+
+def build_full_html_content(title, date, url, html_content):
+    html_content_parts = [
+        f"<h1>{title}</h1>" if title else '',
+        f"<p>{date}</p>",
+        f"<p><a href='{url}'>{url}</a></p>",
+        f"<div>{html_content}</div>",
+    ]
+
+    return '\n\n'.join(
+        part_str for part in html_content_parts
+        if (part_str := part.strip())) + '\n'
+
+
 @dataclass
 class Article:
     raw_html: str
@@ -70,33 +95,16 @@ class AbstractConfig:
         title = self.get_title()
         date = self.get_date()
 
-        content_parts = [
-            f"# {title}" if title else '',
-            date,
-            f'[{self.url}]({self.url})',
-            self.get_md_content(),
-        ]
-
-        md_content = '\n\n'.join(
-            part_str for part in content_parts if (part_str := part.strip()))
-
-        html_content_parts = [
-            f"<h1>{title}</h1>" if title else '',
-            f"<p>{date}</p>",
-            f"<p><a href='{self.url}'>{self.url}</a></p>",
-            f"<div>{self.get_html_content()}</div>",
-        ]
-
-        html_content = '\n\n'.join(
-            part_str for part in html_content_parts if (part_str := part.strip()))
+        full_md_content = build_full_md_content(title, date, self.url, self.get_md_content())
+        full_html_content = build_full_html_content(title, date, self.url, self.get_html_content())
 
         return Article(
             raw_html=self.html,
             success=True,
             error_code='',
             title=title,
-            md_content=md_content,
-            html_content=html_content,
+            md_content=full_md_content,
+            html_content=full_html_content,
             filename=self.get_filename(),
         )
 
@@ -184,22 +192,14 @@ def get_article(url, html=None):
     content = config.get_content()
     date = config.get_date()
 
-    content_parts = [
-        f"# {title}" if title else '',
-        date,
-        url,
-        content,
-    ]
-
-    md_content = '\n\n'.join(
-        part_str for part in content_parts if (part_str := part.strip()))
+    full_md_content = build_full_md_content(title, date, url, content)
 
     return Article(
         raw_html=content,
         success=True,
         error_code='',
         title=title,
-        md_content=md_content,
+        md_content=full_md_content,
         filename=config.get_filename(),
     )
 
