@@ -11,6 +11,4 @@ epub:
 	uv run md_to_epub.py md/*.md
 
 rss:
-	uv run rss_to_epub.py "Oleg - `date +%Y-%m-%d-%H-%M`=https://olegmakarenko.ru/data/rss"
-	uv run rss_to_epub.py "ammo1 - `date +%Y-%m-%d-%H-%M`=http://ammo1.ru/feed"
-	uv run rss_to_epub.py "ksoftware - `date +%Y-%m-%d-%H-%M`=https://ksoftware.livejournal.com/data/rss"
+	uv run rss_to_epub.py rss_subs.txt

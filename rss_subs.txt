@@ -1,0 +1,3 @@
+OlegMakarenko=https://olegmakarenko.ru/data/rss
+ammo1=https://ammo1.ru/feed
+ksoftware=https://ksoftware.livejournal.com/data/rss

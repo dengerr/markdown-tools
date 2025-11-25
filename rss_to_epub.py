@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import datetime
 import sys
 import requests
 from subprocess import run, PIPE
@@ -94,7 +95,15 @@ def get_md(html):
 
 
 if __name__ == '__main__':
+    now = datetime.datetime.now()
     for arg in sys.argv[1:]:
-        stem, url = arg.split('=', maxsplit=1)
-        rss_to_epub(url, stem)
-
+        if arg.endswith('.txt'):
+            with open(arg, 'r') as fp:
+                for line in fp.readlines():
+                    if line:
+                        stem1, url = line.split('=', maxsplit=1)
+                        stem = f'{stem1} - {now.strftime("%Y-%m-%d-%H-%M")}'
+                        rss_to_epub(url.strip(), stem.strip())
+        else:
+            stem, url = arg.split('=', maxsplit=1)
+            rss_to_epub(url.strip(), stem.strip())
