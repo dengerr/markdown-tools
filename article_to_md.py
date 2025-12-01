@@ -18,9 +18,9 @@ from bs4 import BeautifulSoup
 def build_full_md_content(title, date, url, md_content):
     content_parts = [
         f"# {title}" if title else '',
-        date,
+        str(date),
         f'[{url}]({url})',
-        md_content,
+        str(md_content),
     ]
 
     return '\n\n'.join(
