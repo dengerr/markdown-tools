@@ -1,11 +1,14 @@
 #!/usr/bin/python3
+import asyncio
 import datetime
 import sys
 from subprocess import run, PIPE
 
+import aiohttp
 import pyhtml2md
 import requests
 import sqlean as sqlite3
+from aiohttp import http
 
 from article_to_md import Article, build_full_md_content, build_full_html_content
 from md_to_epub import save_imgs, html_md_to_epub
@@ -25,12 +28,33 @@ def init_sqlite():
     return conn
 
 
-def rss_to_epub(rss_url, stem):
+TIMEOUT = aiohttp.ClientTimeout(total=40, sock_connect=5)
+
+
+async def bulk_rss_to_epub(params):
+    coros = []
+    async with aiohttp.ClientSession(timeout=TIMEOUT) as session:
+        for url, stem in params:
+            coros.append(rss_to_epub(session, url.strip(), stem.strip()))
+        await asyncio.gather(*coros)
+
+
+async def rss_to_epub(session: aiohttp.ClientSession, rss_url: str, stem: str):
     if DEBUG:
         with open('oleg.rss.xml') as fp:
             content = fp.read()
     else:
-        content = requests.get(rss_url).content
+        try:
+            print('connect to', rss_url)
+            async with session.get(rss_url, headers={'UserAgent': 'aiohttp'}) as resp:
+                print('hey', rss_url)
+                content = await resp.read()
+        except aiohttp.client_exceptions.ClientError as exc:
+            print(str(exc))
+            return
+        except asyncio.TimeoutError as exc:
+            print(rss_url, 'timeout error', str(exc))
+            return
     channel, items = parse_rss(content)
     items.sort(key=lambda x: x['pubDate'])
     if not items:
@@ -99,6 +123,7 @@ def get_md(html):
 
 if __name__ == '__main__':
     now = datetime.datetime.now()
+    params = []
     for arg in sys.argv[1:]:
         if arg.endswith('.txt'):
             with open(arg, 'r') as fp:
@@ -106,7 +131,8 @@ if __name__ == '__main__':
                     if line:
                         stem1, url = line.split('=', maxsplit=1)
                         stem = f'{stem1} - {now.strftime("%Y-%m-%d-%H-%M")}'
-                        rss_to_epub(url.strip(), stem.strip())
+                        params.append((url, stem))
         else:
             stem, url = arg.split('=', maxsplit=1)
-            rss_to_epub(url.strip(), stem.strip())
+            params.append((url, stem))
+    asyncio.run(bulk_rss_to_epub(params))
