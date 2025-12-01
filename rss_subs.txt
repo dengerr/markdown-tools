@@ -1,6 +1,6 @@
-OlegMakarenko=https://olegmakarenko.ru/data/rss
+OlegMakarenko=https://olegmakarenko.ru/data/rss/
 ammo1=https://ammo1.ru/feed
-ksoftware=https://ksoftware.livejournal.com/data/rss
+toverovskiy=https://toverovskiy.livejournal.com/data/rss/
 Ильяхов = https://maximilyahov.ru/blog/rss/
 Вастрик = https://vas3k.blog/rss/
 Бачило = https://16-bits.ru/feed/
