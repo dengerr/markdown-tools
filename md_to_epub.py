@@ -36,11 +36,15 @@ def save_imgs(filenames):
                 hash = hashlib.sha1(response.content).hexdigest()
                 with open(Path(CACHE_DIR) / hash, 'wb') as fp:
                     fp.write(response.content)
-                cache_db[url] = dict(
-                    img_name=str(url).rsplit('/', 1)[-1],
-                    media_type=response.headers['Content-Type'],
-                    hash=hash,
-                )
+                if 'Content-Type' not in response.headers:
+                    print('error, not content type')
+                    print(response.headers)
+                else:
+                    cache_db[url] = dict(
+                        img_name=str(url).rsplit('/', 1)[-1],
+                        media_type=response.headers['Content-Type'],
+                        hash=hash,
+                    )
                 print('.', end='')
     print('all imgs saved')
 
