@@ -32,6 +32,8 @@ def rss_to_epub(rss_url, stem):
     else:
         content = requests.get(rss_url).content
     channel, items = parse_rss(content)
+    if not channel or not items:
+        return
     items.sort(key=lambda x: x['pubDate'])
     if not items:
         return

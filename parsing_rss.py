@@ -8,6 +8,8 @@ def save_from_file(filename):
     # другой вариант - fetch_file()
     content = open(filename).read()
     channel, items = parse_rss(content)
+    if not channel:
+        return
     print(channel)
     print(items)
     save_to_db(channel, items)
@@ -15,6 +17,8 @@ def save_from_file(filename):
 
 def parse_rss(content):
     soup = BeautifulSoup(content, features="xml")
+    if not soup.rss:
+        return None, None
     channel_node = soup.rss.channel
     channel = {
         'title': channel_node.title,

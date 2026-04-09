@@ -3,8 +3,8 @@ start.html:
 	scp start.html root@killdozer:/var/www/html/buryi.de/start.html
 
 clean:
-	rm md/*
-	echo "" > urls.txt
+	rm cache.shelve.db
+	rm cache/*
 
 epub:
 	uv run bulk_get_articles_to_md.py
