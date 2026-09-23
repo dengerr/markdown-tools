@@ -6,13 +6,15 @@
 # Нужно скачать софтину (уже не надо)
 # https://github.com/suntong/html2md
 
+import copy
+import re
 import sys
 from dataclasses import dataclass
 from subprocess import run, PIPE
 
 import pyhtml2md
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 
 def build_full_md_content(title, date, url, md_content):
@@ -156,6 +158,170 @@ class HabrConfig(AbstractConfig):
         return html.prettify()
 
 
+POSITIVE_CLASS_TOKENS = (
+    'article', 'content', 'post', 'entry', 'text',
+    'body', 'main', 'story', 'blog', 'editorial', 'wrapper',
+)
+NEGATIVE_CLASS_TOKEN_PATTERNS = re.compile(
+    r'(sidebar|nav|footer|comment|widget|menu|header|aside|advert|promo|related|share|social|meta|tags|categories|breadcrumb|author|reply|search|subscri|newsletter|rating|vote|wpdiscuz|navigation|pagination|breadcrumbs)',
+    re.I,
+)
+
+
+class UniversalConfig(AbstractConfig):
+    title_tag = None
+    content_tag = None
+    date_tag = None
+
+    def _find_semantic_content(self):
+        candidates = self.soup.select('article, main, [role="main"], [role="article"]')
+        if candidates:
+            return max(candidates, key=lambda el: len(el.get_text(strip=True)))
+        return None
+
+    def _find_semantic_title(self):
+        h1 = self.soup.select_one('h1')
+        if h1:
+            return h1
+        og = self.soup.select_one('meta[property="og:title"]')
+        if og and og.get('content'):
+            return og
+        title_tag = self.soup.select_one('title')
+        return title_tag
+
+    def _find_semantic_date(self):
+        time_tag = self.soup.select_one('time')
+        if time_tag:
+            return time_tag
+        meta_date = self.soup.select_one('meta[property="article:published_time"]')
+        if meta_date:
+            return meta_date
+        return self.soup.select_one('meta[name="date"]')
+
+    def _score_element(self, el: Tag) -> float:
+        text = el.get_text(strip=True)
+        text_len = len(text)
+        if text_len < 100:
+            return 0
+
+        p_count = len(el.find_all('p'))
+        li_count = len(el.find_all('li'))
+        heading_count = len(el.find_all(['h1', 'h2', 'h3', 'h4']))
+        img_count = len(el.find_all('img'))
+        pre_count = len(el.find_all(['pre', 'code', 'blockquote']))
+
+        links = el.find_all('a')
+        link_text_len = sum(len(a.get_text(strip=True)) for a in links)
+        link_density = link_text_len / text_len if text_len > 0 else 1
+        comma_count = text.count(',') + text.count('.')
+
+        score = text_len * 0.05
+        score += p_count * 30
+        score += li_count * 15
+        score += heading_count * 20
+        score += img_count * 10
+        score += pre_count * 15
+        score += comma_count * 2
+        score *= max(0, 1 - link_density * 1.5)
+
+        classes = ' '.join(el.get('class', [])) + ' ' + el.get('id', '')
+        positive_tokens = [t for t in classes.split() if t in POSITIVE_CLASS_TOKENS]
+        score *= 1.2 ** len(positive_tokens)
+        negative_tokens = NEGATIVE_CLASS_TOKEN_PATTERNS.findall(classes)
+        score *= 0.3 ** len(negative_tokens)
+
+        return score
+
+    def _find_heuristic_content(self):
+        scored = []
+        for el in self.soup.find_all(['div', 'section', 'article', 'main']):
+            score = self._score_element(el)
+            if score > 0:
+                scored.append((score, el))
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        if not scored:
+            return self.soup.body
+
+        best_el = scored[0][1]
+
+        for _, el in scored[1:3]:
+            try:
+                if best_el in el.find_all():
+                    return el
+            except (AttributeError, TypeError):
+                pass
+
+        return best_el
+
+    def _clean_content(self, el: Tag) -> Tag:
+        clean = copy.deepcopy(el)
+        for tag in clean.find_all(
+            ['nav', 'footer', 'aside', 'script', 'style', 'noscript', 'iframe', 'form']
+        ):
+            tag.decompose()
+        remove = []
+        for tag in clean.find_all(True):
+            classes = tag.get('class') or []
+            if any(NEGATIVE_CLASS_TOKEN_PATTERNS.search(c) for c in classes):
+                remove.append(tag)
+        for tag in remove:
+            tag.decompose()
+        return clean
+
+    def get_title(self) -> str:
+        el = self._find_semantic_title()
+        if el is None:
+            return ''
+        if el.name == 'meta':
+            return el.get('content', '')
+        if el.name == 'h1' or el.name == 'title':
+            return el.get_text(strip=True)
+        return get_md(el)
+
+    def get_date(self) -> str:
+        el = self._find_semantic_date()
+        if el is None:
+            return ''
+        if el.name == 'meta':
+            val = el.get('content', '')
+            if val:
+                return val.split('T')[0]
+            return ''
+        return get_md(el)
+
+    def get_filename(self) -> str:
+        title = self.get_title()
+        if not title:
+            return 'article'
+        clean = re.sub(r'[^\w\s-]', '', title)
+        clean = re.sub(r'\s+', ' ', clean).strip()
+        return clean[:100]
+
+    def get_md_content(self) -> str:
+        el = self._find_semantic_content()
+        if el is None:
+            el = self._find_heuristic_content()
+        else:
+            heuristic = self._find_heuristic_content()
+            semantic_text = len(el.get_text(strip=True))
+            heuristic_text = len(heuristic.get_text(strip=True))
+            if heuristic_text > semantic_text * 1.5:
+                el = heuristic
+        el = self._clean_content(el)
+        return get_md(el)
+
+    def get_html_content(self) -> str:
+        el = self._find_semantic_content()
+        if el is None:
+            el = self._find_heuristic_content()
+        el = self._clean_content(el)
+        html = el.prettify()
+        if not html:
+            print('universal config: no content found')
+        return html
+
+
 configs = {
     'olegmakarenko.ru': OlegConfig,
     't.me': TelegramConfig,
@@ -181,7 +347,7 @@ def get_config(url, html=None) -> AbstractConfig:
     for k, v in configs.items():
         if k in url:
             return v(url, html)
-    raise RuntimeError('config not found')
+    return UniversalConfig(url, html)
 
 
 def get_article(url, html=None):
