@@ -3,12 +3,14 @@ start.html:
 	scp start.html root@killdozer:/var/www/html/buryi.de/start.html
 
 clean:
-	rm cache.shelve.db
-	rm cache/*
+	rm -f cache.shelve.db
+	rm -rf cache/*
 
 epub:
-	uv run bulk_get_articles_to_md.py
-	uv run md_to_epub.py md/*.md
+	uv run pipeline.py urls/*.txt
 
 rss:
 	uv run rss_to_epub.py rss_subs.txt
+
+test:
+	uv run pytest

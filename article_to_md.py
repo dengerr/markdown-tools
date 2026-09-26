@@ -1,45 +1,56 @@
 #!/usr/bin/python3
 
-# использование article_to_md.py https://url/
-# Надо немного поднастроить под каждый сайт:
-# jQuery селекторы для title, content, date.
-# Нужно скачать софтину (уже не надо)
+# Скачивание статей и приведение их к md / читаемому html.
+#
+# usage: article_to_md.py https://url/
+# Под каждый сайт подбираются селекторы title, content, date в своём Config.
+# Если селектор не нашёлся (сайт поменял вёрстку) — ищем семантически
+# (h1/main/article/og:title/time) и эвристически по объёму текста.
+# Неизвестные сайты разбирает UniversalConfig — это AbstractConfig без селекторов.
+# Нужно было скачать софтину (уже не надо)
 # https://github.com/suntong/html2md
 
 import copy
 import re
 import sys
 from dataclasses import dataclass
-from subprocess import run, PIPE
 
 import pyhtml2md
 import requests
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Tag, Comment, Doctype, ProcessingInstruction
 
+TAG_TIMEOUT = 30
 
-def build_full_md_content(title, date, url, md_content):
-    content_parts = [
-        f"# {title}" if title else '',
-        str(date),
-        f'[{url}]({url})',
-        str(md_content),
-    ]
+# На linux опасны только разделители; `:` и `?` оставляем — они есть
+# в именах уже скачанных статей (например `Собирали франкенштейна…: ZFS.md`)
+UNSAFE_FILENAME_CHARS = re.compile(r'[/\\\x00-\x1f]')
+ISO_DATETIME = re.compile(r'^\d{4}-\d{2}-\d{2}T')
 
-    return '\n\n'.join(
-        part_str for part in content_parts
-        if (part_str := part.strip())) + '\n'
+DROP_TAGS = (
+    'script', 'style', 'noscript', 'form', 'button', 'input', 'select', 'textarea',
+    'iframe', 'ins', 'svg', 'canvas',
+)
+# bs4 4.13 не умеет find_all(Comment): класс уходит в TagNameMatchRule и падает,
+# поэтому ищем через isinstance
+DROP_NODES = (Comment, Doctype, ProcessingInstruction)
+IS_DROP_NODE = lambda node: isinstance(node, DROP_NODES)
+# В локальном файле class/style/srcset/data-* ничего не дают, но тащат мусор
+KEEP_ATTRS = frozenset((
+    'src', 'alt', 'href', 'title', 'id', 'width', 'height', 'colspan', 'rowspan',
+    'datetime', 'lang', 'dir', 'start', 'type', 'rel', 'target',
+))
+# Эти теги имеют смысл и без содержимого
+MEANINGFUL_TAGS = ('img', 'br', 'hr', 'table', 'figure', 'video', 'audio', 'source')
+UNWRAP_TAGS = ('div', 'span')
 
-def build_full_html_content(title, date, url, html_content):
-    html_content_parts = [
-        f"<h1>{title}</h1>" if title else '',
-        f"<p>{date}</p>",
-        f"<p><a href='{url}'>{url}</a></p>",
-        f"<div>{html_content}</div>",
-    ]
-
-    return '\n\n'.join(
-        part_str for part in html_content_parts
-        if (part_str := part.strip())) + '\n'
+POSITIVE_CLASS_TOKENS = (
+    'article', 'content', 'post', 'entry', 'text',
+    'body', 'main', 'story', 'blog', 'editorial', 'wrapper',
+)
+NEGATIVE_CLASS_TOKEN_PATTERNS = re.compile(
+    r'(sidebar|nav|footer|comment|widget|menu|header|aside|advert|promo|related|share|social|meta|tags|categories|breadcrumb|author|reply|search|subscri|newsletter|rating|vote|wpdiscuz|navigation|pagination|breadcrumbs)',
+    re.I,
+)
 
 
 @dataclass
@@ -53,45 +64,263 @@ class Article:
     filename: str
 
 
+def sanitize_filename(name: str, max_len: int = 100) -> str:
+    clean = re.sub(r'\s+', ' ', name).strip()
+    clean = UNSAFE_FILENAME_CHARS.sub('-', clean).strip().strip('.')
+    if len(clean) > max_len:
+        cut = clean[:max_len]
+        clean = cut.rsplit(' ', 1)[0] if ' ' in cut else cut
+    return clean.strip() or 'article'
+
+
+def unwrap_empty(clean: Tag) -> Tag:
+    changed = True
+    while changed:
+        changed = False
+        for tag in clean.find_all(UNWRAP_TAGS):
+            if tag.get_text(strip=True) or tag.find(MEANINGFUL_TAGS):
+                continue
+            tag.unwrap()
+            changed = True
+    return clean
+
+
+def strip_attributes(clean: Tag) -> Tag:
+    # find_all не отдаёт сам корень, а у него атрибутов не меньше
+    for node in [clean, *clean.find_all(True)]:
+        for attr in list(node.attrs):
+            if attr not in KEEP_ATTRS:
+                del node.attrs[attr]
+    return clean
+
+
+def unwrap_structure(clean: Tag) -> Tag:
+    """Фрагмент вставляется в div главы epub, поэтому `<body>`/`<html>` внутри него
+    невалидны для XHTML. Содержимое сохраняем: корень переименовываем в div,
+    вложенные теги разворачиваем."""
+    if clean.name in ('body', 'html'):
+        clean.name = 'div'
+    for tag in clean.find_all(('body', 'html')):
+        tag.unwrap()
+    return clean
+
+
+def clean_for_reading(tag: Tag) -> Tag:
+    clean = copy.deepcopy(tag)
+    remove = [
+        node for node in clean.find_all(True)
+        if NEGATIVE_CLASS_TOKEN_PATTERNS.search(
+            ' '.join(node.get('class', [])) + ' ' + (node.get('id') or ''))
+    ]
+    for node in remove:
+        node.decompose()
+    for node in clean.find_all(string=IS_DROP_NODE):
+        node.extract()
+    for node in clean.find_all(DROP_TAGS):
+        node.decompose()
+    return unwrap_empty(unwrap_structure(strip_attributes(clean)))
+
+
+def build_full_md_content(title, date, url, md_content):
+    content_parts = [
+        f"# {title}" if title else '',
+        str(date),
+        f'[{url}]({url})' if url else '',
+        str(md_content),
+    ]
+
+    return '\n\n'.join(
+        part_str for part in content_parts
+        if (part_str := part.strip())) + '\n'
+
+def build_full_html_content(title, date, url, html_content):
+    html_content_parts = [
+        f"<h1>{title}</h1>" if title else '',
+        f"<p>{date}</p>" if str(date).strip() else '',
+        f"<p><a href='{url}'>{url}</a></p>" if url else '',
+        f"<div>{html_content}</div>",
+    ]
+
+    return '\n\n'.join(
+        part_str for part in html_content_parts
+        if (part_str := part.strip())) + '\n'
+
+
+def get_md(html):
+    md = pyhtml2md.convert(str(html))
+    return md.strip()
+
+
+def tag_to_str(tag) -> str:
+    """Заголовок и дата — всегда чистый текст: они идут в имя файла, в
+    `# ...` и в `<h1>`, где markdown-разметка не нужна."""
+    if tag is None:
+        return ''
+    if tag.name == 'meta':
+        val = (tag.get('content') or '').strip()
+        return val.split('T')[0] if ISO_DATETIME.match(val) else val
+    return re.sub(r'\s+', ' ', tag.get_text(' ', strip=True)).strip()
+
+
+def find_semantic_title(soup) -> Tag | None:
+    return (
+        soup.select_one('h1')
+        or soup.select_one('meta[property="og:title"]')
+        or soup.select_one('title')
+    )
+
+
+def find_semantic_date(soup) -> Tag | None:
+    return (
+        soup.select_one('time')
+        or soup.select_one('meta[property="article:published_time"]')
+        or soup.select_one('meta[name="date"]')
+    )
+
+
+def find_semantic_content(soup) -> Tag | None:
+    candidates = soup.select('article, main, [role="main"], [role="article"]')
+    if candidates:
+        return max(candidates, key=lambda el: len(el.get_text(strip=True)))
+    return None
+
+
+def score_element(el: Tag) -> float:
+    text = el.get_text(strip=True)
+    text_len = len(text)
+    if text_len < 100:
+        return 0
+
+    p_count = len(el.find_all('p'))
+    li_count = len(el.find_all('li'))
+    heading_count = len(el.find_all(['h1', 'h2', 'h3', 'h4']))
+    img_count = len(el.find_all('img'))
+    pre_count = len(el.find_all(['pre', 'code', 'blockquote']))
+
+    links = el.find_all('a')
+    link_text_len = sum(len(a.get_text(strip=True)) for a in links)
+    link_density = link_text_len / text_len if text_len > 0 else 1
+    comma_count = text.count(',') + text.count('.')
+
+    score = text_len * 0.05
+    score += p_count * 30
+    score += li_count * 15
+    score += heading_count * 20
+    score += img_count * 10
+    score += pre_count * 15
+    score += comma_count * 2
+    score *= max(0, 1 - link_density * 1.5)
+
+    classes = ' '.join(el.get('class', [])) + ' ' + (el.get('id') or '')
+    positive_tokens = [t for t in classes.split() if t in POSITIVE_CLASS_TOKENS]
+    score *= 1.2 ** len(positive_tokens)
+    negative_tokens = NEGATIVE_CLASS_TOKEN_PATTERNS.findall(classes)
+    score *= 0.3 ** len(negative_tokens)
+
+    return score
+
+
+def find_heuristic_content(soup) -> Tag | None:
+    scored = []
+    for el in soup.find_all(['div', 'section', 'article', 'main']):
+        score = score_element(el)
+        if score > 0:
+            scored.append((score, el))
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    if not scored:
+        return soup.body
+
+    best_el = scored[0][1]
+
+    for _, el in scored[1:3]:
+        try:
+            if best_el in el.find_all():
+                return el
+        except (AttributeError, TypeError):
+            pass
+
+    return best_el
+
+
+def find_content(soup) -> Tag | None:
+    semantic = find_semantic_content(soup)
+    if semantic is None:
+        return find_heuristic_content(soup)
+    heuristic = find_heuristic_content(soup)
+    if heuristic is None:
+        return semantic
+    semantic_len = len(semantic.get_text(strip=True))
+    heuristic_len = len(heuristic.get_text(strip=True))
+    if heuristic_len > semantic_len * 1.5:
+        return heuristic
+    return semantic
+
+
 class AbstractConfig:
     title_tag = 'h1'
     content_tag = 'article'
     date_tag = '.dt-published'
+    drop_selectors = ()
+
+    @staticmethod
+    def fetch_url_for(url: str) -> str:
+        """Урл для скачивания, известный до создания конфига. Сеть не трогает,
+        поэтому вызывается слоем загрузки до fetch."""
+        return url
 
     def __init__(self, url, html=None):
         self.url = url
         self.raw_html = html
         self.soup = BeautifulSoup(self.html, 'lxml')
+        self._content = None
 
     @property
     def html(self):
         if self.raw_html is None:
-            self.raw_html = get_raw_html(self.url)
+            self.raw_html = get_raw_html(self.get_fetch_url())
         return self.raw_html
 
-    def get_html(self, url):
-        return get_raw_html(url)
+    def get_fetch_url(self) -> str:
+        """Урл, по которому реально качать. Telegram отдаёт текст только в embed-режиме."""
+        return self.fetch_url_for(self.url)
 
     def get_title(self) -> str:
-        html = self.soup.select_one(self.title_tag)
-        return get_md(html)
+        return tag_to_str(self._find(self.title_tag, find_semantic_title))
 
     def get_filename(self) -> str:
-        return self.get_title()
+        return sanitize_filename(self.get_title())
 
     def get_date(self) -> str:
-        html = self.soup.select_one(self.date_tag)
-        return get_md(html)
+        return tag_to_str(self._find(self.date_tag, find_semantic_date))
+
+    def get_content(self) -> Tag | None:
+        if self._content is None:
+            self._content = self._get_content()
+        return self._content
 
     def get_md_content(self) -> str:
-        html = self.soup.select_one(self.content_tag)
-        return get_md(html)
+        return get_md(self.get_content())
 
     def get_html_content(self) -> str:
-        html = self.soup.select_one(self.content_tag).prettify()
-        if not html:
+        tag = self.get_content()
+        if tag is None:
             print('not content for tag', self.content_tag)
-        return html
+            return ''
+        return tag.prettify()
+
+    def _find(self, selector, fallback):
+        tag = self.soup.select_one(selector) if selector else None
+        return tag if tag is not None else fallback(self.soup)
+
+    def _get_content(self) -> Tag | None:
+        tag = self._find(self.content_tag, find_content)
+        if tag is None:
+            return None
+        for selector in self.drop_selectors:
+            for node in tag.select(selector):
+                node.decompose()
+        return clean_for_reading(tag)
 
     def get_obj(self) -> Article:
         title = self.get_title()
@@ -112,35 +341,37 @@ class AbstractConfig:
 
 
 class OlegConfig(AbstractConfig):
-    content_tag = '.b-singlepost-bodywrapper'
+    content_tag = None
+    date_tag = 'time'
 
     def get_date(self) -> str:
-        return BeautifulSoup(self.html, 'lxml').time.text
+        time = BeautifulSoup(self.html, 'lxml').time
+        return tag_to_str(time) if time else super().get_date()
 
 
 class TelegramConfig(AbstractConfig):
     content_tag = '.tgme_widget_message_text'
     date_tag = 'time'
 
-    def get_html(self, url):
-        url = f'{url}?embed=1&mode=tme'
-        return get_raw_html(url)
+    @staticmethod
+    def fetch_url_for(url: str) -> str:
+        return f'{url}{"&" if "?" in url else "?"}embed=1&mode=tme'
 
     def get_title(self) -> str:
         return ''
-        content = get_md(self.html, self.content_tag)
-        return content[:50]
 
     def get_filename(self) -> str:
         url_parts = self.url.split('/')
         *_, name, n = url_parts
-        return f'{name} {n}'
+        return sanitize_filename(f'{name} {n}')
 
 
 class Vas3kConfig(AbstractConfig):
-    title_tag = '.simple-headline-title'
+    # Заголовок и дата на странице есть только в og:title/метаданных —
+    # их находит семантический поиск, объявленный ниже как None.
+    title_tag = None
     content_tag = '.post'
-    date_tag = '.simple-headline-date'
+    date_tag = None
 
 
 class HabrConfig(AbstractConfig):
@@ -149,177 +380,22 @@ class HabrConfig(AbstractConfig):
     date_tag = '.tm-article-datetime-published'
 
     def get_html_content(self) -> str:
-        html = self.soup.select_one(self.content_tag)
-        if not html:
+        tag = self.get_content()
+        if tag is None:
             print('not content for tag', self.content_tag)
-        for li in html.find_all('li'):
+            return ''
+        for li in tag.find_all('li'):
             if len(li.contents) == 1 and li.contents[0].name == 'p':
                 li.contents[0].name = 'span'
-        return html.prettify()
-
-
-POSITIVE_CLASS_TOKENS = (
-    'article', 'content', 'post', 'entry', 'text',
-    'body', 'main', 'story', 'blog', 'editorial', 'wrapper',
-)
-NEGATIVE_CLASS_TOKEN_PATTERNS = re.compile(
-    r'(sidebar|nav|footer|comment|widget|menu|header|aside|advert|promo|related|share|social|meta|tags|categories|breadcrumb|author|reply|search|subscri|newsletter|rating|vote|wpdiscuz|navigation|pagination|breadcrumbs)',
-    re.I,
-)
+        return tag.prettify()
 
 
 class UniversalConfig(AbstractConfig):
+    """Ничего не настроено: всё через семантический и эвристический поиск."""
+
     title_tag = None
     content_tag = None
     date_tag = None
-
-    def _find_semantic_content(self):
-        candidates = self.soup.select('article, main, [role="main"], [role="article"]')
-        if candidates:
-            return max(candidates, key=lambda el: len(el.get_text(strip=True)))
-        return None
-
-    def _find_semantic_title(self):
-        h1 = self.soup.select_one('h1')
-        if h1:
-            return h1
-        og = self.soup.select_one('meta[property="og:title"]')
-        if og and og.get('content'):
-            return og
-        title_tag = self.soup.select_one('title')
-        return title_tag
-
-    def _find_semantic_date(self):
-        time_tag = self.soup.select_one('time')
-        if time_tag:
-            return time_tag
-        meta_date = self.soup.select_one('meta[property="article:published_time"]')
-        if meta_date:
-            return meta_date
-        return self.soup.select_one('meta[name="date"]')
-
-    def _score_element(self, el: Tag) -> float:
-        text = el.get_text(strip=True)
-        text_len = len(text)
-        if text_len < 100:
-            return 0
-
-        p_count = len(el.find_all('p'))
-        li_count = len(el.find_all('li'))
-        heading_count = len(el.find_all(['h1', 'h2', 'h3', 'h4']))
-        img_count = len(el.find_all('img'))
-        pre_count = len(el.find_all(['pre', 'code', 'blockquote']))
-
-        links = el.find_all('a')
-        link_text_len = sum(len(a.get_text(strip=True)) for a in links)
-        link_density = link_text_len / text_len if text_len > 0 else 1
-        comma_count = text.count(',') + text.count('.')
-
-        score = text_len * 0.05
-        score += p_count * 30
-        score += li_count * 15
-        score += heading_count * 20
-        score += img_count * 10
-        score += pre_count * 15
-        score += comma_count * 2
-        score *= max(0, 1 - link_density * 1.5)
-
-        classes = ' '.join(el.get('class', [])) + ' ' + el.get('id', '')
-        positive_tokens = [t for t in classes.split() if t in POSITIVE_CLASS_TOKENS]
-        score *= 1.2 ** len(positive_tokens)
-        negative_tokens = NEGATIVE_CLASS_TOKEN_PATTERNS.findall(classes)
-        score *= 0.3 ** len(negative_tokens)
-
-        return score
-
-    def _find_heuristic_content(self):
-        scored = []
-        for el in self.soup.find_all(['div', 'section', 'article', 'main']):
-            score = self._score_element(el)
-            if score > 0:
-                scored.append((score, el))
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        if not scored:
-            return self.soup.body
-
-        best_el = scored[0][1]
-
-        for _, el in scored[1:3]:
-            try:
-                if best_el in el.find_all():
-                    return el
-            except (AttributeError, TypeError):
-                pass
-
-        return best_el
-
-    def _clean_content(self, el: Tag) -> Tag:
-        clean = copy.deepcopy(el)
-        for tag in clean.find_all(
-            ['nav', 'footer', 'aside', 'script', 'style', 'noscript', 'iframe', 'form']
-        ):
-            tag.decompose()
-        remove = []
-        for tag in clean.find_all(True):
-            classes = tag.get('class') or []
-            if any(NEGATIVE_CLASS_TOKEN_PATTERNS.search(c) for c in classes):
-                remove.append(tag)
-        for tag in remove:
-            tag.decompose()
-        return clean
-
-    def get_title(self) -> str:
-        el = self._find_semantic_title()
-        if el is None:
-            return ''
-        if el.name == 'meta':
-            return el.get('content', '')
-        if el.name == 'h1' or el.name == 'title':
-            return el.get_text(strip=True)
-        return get_md(el)
-
-    def get_date(self) -> str:
-        el = self._find_semantic_date()
-        if el is None:
-            return ''
-        if el.name == 'meta':
-            val = el.get('content', '')
-            if val:
-                return val.split('T')[0]
-            return ''
-        return get_md(el)
-
-    def get_filename(self) -> str:
-        title = self.get_title()
-        if not title:
-            return 'article'
-        clean = re.sub(r'[^\w\s-]', '', title)
-        clean = re.sub(r'\s+', ' ', clean).strip()
-        return clean[:100]
-
-    def get_md_content(self) -> str:
-        el = self._find_semantic_content()
-        if el is None:
-            el = self._find_heuristic_content()
-        else:
-            heuristic = self._find_heuristic_content()
-            semantic_text = len(el.get_text(strip=True))
-            heuristic_text = len(heuristic.get_text(strip=True))
-            if heuristic_text > semantic_text * 1.5:
-                el = heuristic
-        el = self._clean_content(el)
-        return get_md(el)
-
-    def get_html_content(self) -> str:
-        el = self._find_semantic_content()
-        if el is None:
-            el = self._find_heuristic_content()
-        el = self._clean_content(el)
-        html = el.prettify()
-        if not html:
-            print('universal config: no content found')
-        return html
 
 
 configs = {
@@ -331,45 +407,36 @@ configs = {
 
 
 def get_raw_html(url) -> str:
-    response = requests.get(url)
-    return response.content.decode('utf8')
-
-
-def get_md(html):
-    md = pyhtml2md.convert(str(html))
-    return md.strip()
-    p = run(['html2md'], stdout=PIPE,
-            input=html, encoding='utf8')
-    return p.stdout.strip()
+    response = requests.get(url, timeout=TAG_TIMEOUT)
+    return response.text
 
 
 def get_config(url, html=None) -> AbstractConfig:
+    if not url:   # локальный .html без canonical/og:url
+        return UniversalConfig('', html)
     for k, v in configs.items():
         if k in url:
             return v(url, html)
     return UniversalConfig(url, html)
 
 
+def get_fetch_url_for(url) -> str:
+    """Урл для скачивания без создания конфига: конфиг в __init__ тянет страницу,
+    а слой загрузки решает, когда и как качать."""
+    if not url:
+        return ''
+    for k, v in configs.items():
+        if k in url:
+            return v.fetch_url_for(url)
+    return url
+
+
 def get_article(url, html=None):
     config = get_config(url, html)
     return config.get_obj()
 
-    title = config.get_title()
-    content = config.get_content()
-    date = config.get_date()
-
-    full_md_content = build_full_md_content(title, date, url, content)
-
-    return Article(
-        raw_html=content,
-        success=True,
-        error_code='',
-        title=title,
-        md_content=full_md_content,
-        filename=config.get_filename(),
-    )
-
 
 if __name__ == '__main__':
-    article = get_article(sys.argv[1])
-    open(f'{article.filename}.md', 'w').write(article.md_content)
+    from pipeline import main
+
+    main(sys.argv[1:], outputs=['md'], md_dir='.')

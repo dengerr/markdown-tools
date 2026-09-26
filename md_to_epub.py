@@ -1,34 +1,35 @@
 #!/bin/python
 
-import markdown
-from pathlib import Path
-import sys
 import shelve
 import hashlib
+import sys
+from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 from ebooklib import epub
 from bs4 import BeautifulSoup
 
-from article_to_md import Article
-
 CACHE_DIR = './cache'
 CACHE_FILE = './cache.shelve'
 OUTPUT_DIR = './output'
+MD_DIR = './md'
+HTML_DIR = './html'
 
 
-def save_imgs(filenames):
+@dataclass
+class Chapter:
+    """Глава книги: готовый html. Статьи и md-файлы приводятся к нему
+    в pipeline.py — здесь только сборка epub и кеш картинок."""
+    title: str
+    html: str
+
+
+def save_imgs(chapters):
     with shelve.open(CACHE_FILE) as cache_db:
-        for filename in filenames:
-            if isinstance(filename, Article):
-                article = filename
-                body = article.html_content
-            else:
-                with open(filename, 'r') as f:
-                    body = markdown.markdown(f.read())
-            soup = BeautifulSoup(body, "html.parser")
-            img_tags = soup.find_all('img')
-            for img in img_tags:
+        for chapter in chapters:
+            soup = BeautifulSoup(chapter.html, "html.parser")
+            for img in soup.find_all('img'):
                 url = img.get('src')
                 if not url or url in cache_db:
                     continue
@@ -49,31 +50,19 @@ def save_imgs(filenames):
     print('all imgs saved')
 
 
-def html_md_to_epub(filenames, author, name):
+def html_md_to_epub(chapters, author, name):
     book = epub.EpubBook()
     book.set_title(name)
     book.add_author(author)
     book.set_language("ru")
-    chapters = ['nav']
-    chapters = []
+    spine = []
     toc = []
     img_in_epub = set()
 
-    for i, filename in enumerate(filenames):
-        if isinstance(filename, Article):
-            article = filename
-            body = article.html_content
-            title = article.title
-        else:
-            with open(filename, 'r') as f:
-                if filename.endswith('.md'):
-                    body = markdown.markdown(f.read())
-                else:
-                    body = f.read()
-            title = filename.rsplit('/', 1)[-1].rsplit('.', 1)[0]
-        print(title)
+    for i, chapter in enumerate(chapters):
+        print(chapter.title)
 
-        soup = BeautifulSoup(body, "html.parser")
+        soup = BeautifulSoup(chapter.html, "html.parser")
         img_tags = soup.find_all('img')
         with shelve.open(CACHE_FILE) as cache_db:
             for j, img in enumerate(img_tags):
@@ -92,22 +81,22 @@ def html_md_to_epub(filenames, author, name):
                     eimg = epub.EpubImage(uid=f'image_{i}_{j}', file_name=img['src'], media_type=media_type, content=content)
                     book.add_item(eimg)
 
-        chapter = epub.EpubHtml(title=title, file_name=f"chap{i}.xhtml", lang="ru")
-        chapter.content = str(soup)
+        chap = epub.EpubHtml(title=chapter.title, file_name=f"chap{i}.xhtml", lang="ru")
+        chap.content = str(soup)
 
-        book.add_item(chapter)
-        chapters.append(chapter)
-        toc.append(chapter)
-    book.spine = chapters
+        book.add_item(chap)
+        spine.append(chap)
+        toc.append(chap)
+    book.spine = spine
     book.toc = toc
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
 
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     epub.write_epub(f"{OUTPUT_DIR}/{author} - {name}.epub", book)
 
 
 if __name__ == "__main__":
-    filenames = sys.argv[1:]
-    save_imgs(filenames)
-    # hardcode
-    html_md_to_epub(filenames, "Oleg Makarenko", "2025-05-07")
+    from pipeline import main
+
+    raise SystemExit(main(sys.argv[1:], outputs=['epub']))

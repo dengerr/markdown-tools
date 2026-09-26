@@ -1,20 +1,16 @@
 #!/usr/bin/python3
 import datetime
 import sys
-from subprocess import run, PIPE
 
-import pyhtml2md
 import requests
 import sqlean as sqlite3
 
-from article_to_md import Article, build_full_md_content, build_full_html_content
-from md_to_epub import save_imgs, html_md_to_epub
+from article_to_md import Article, build_full_md_content, build_full_html_content, get_md
+from md_to_epub import Chapter, save_imgs, html_md_to_epub
 from parsing_rss import parse_rss
 
 OUTPUT_DIR = 'md'
-HTML_DIR = 'html'
 GUIDS_FILE = 'guids.shelve'
-INTERVAL = 4
 DEBUG = 0
 
 
@@ -79,24 +75,17 @@ def rss_to_epub(rss_url, stem):
     if not articles:
         return
 
-    save_imgs(articles)
+    chapters = [Chapter(title=article.title, html=article.html_content) for article in articles]
+    save_imgs(chapters)
     if ' - ' in stem:
         author, name = stem.split(' - ')
     else:
         author, name = 'unknown', stem
-    html_md_to_epub(articles, author, name)
+    html_md_to_epub(chapters, author, name)
 
     # save to md file
     for article in articles:
-        open(f'md/{author} - {article.filename}.md', 'w').write(article.md_content)
-
-
-def get_md(html):
-    md = pyhtml2md.convert(str(html))
-    return md.strip()
-    p = run(['html2md', '--in'], stdout=PIPE,
-            input=html, encoding='utf8')
-    return p.stdout.strip()
+        open(f'{OUTPUT_DIR}/{author} - {article.filename}.md', 'w').write(article.md_content)
 
 
 if __name__ == '__main__':
