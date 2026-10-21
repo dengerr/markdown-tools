@@ -54,7 +54,7 @@ def rss_to_epub(rss_url, stem):
         ))
 
         title = item['title']
-        date = item["pubDate"].date()
+        date = item["pubDate"].strftime('%Y-%m-%d %H:%M')
         url = item["link"]
         full_html_content = build_full_html_content(title, date, url, item['description'])
         full_md_content = build_full_md_content(title, date, url, get_md(item['description']))
