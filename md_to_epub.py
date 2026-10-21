@@ -33,7 +33,12 @@ def save_imgs(chapters):
                 url = img.get('src')
                 if not url or url in cache_db:
                     continue
-                response = requests.get(url)
+                try:
+                    response = requests.get(url)
+                except Excaption as exc:
+                    print(f'image with url {url} not accepted')
+                    print(exc)
+                    continue
                 hash = hashlib.sha1(response.content).hexdigest()
                 with open(Path(CACHE_DIR) / hash, 'wb') as fp:
                     fp.write(response.content)
